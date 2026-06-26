@@ -166,6 +166,8 @@ private:
     long _lastRoutingTime;
     long _lastTransmitTime;
     NeighborTableEntry _neighborTable[255];
+
+public:
     RoutingTableEntry _routeTable[255];
 };
 
