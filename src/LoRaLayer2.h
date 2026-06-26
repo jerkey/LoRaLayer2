@@ -79,8 +79,8 @@ struct RoutingTableEntry{
     uint8_t destination[ADDR_LENGTH];
     uint8_t nextHop[ADDR_LENGTH];
     uint8_t distance;
-    uint8_t lastReceived;
     uint8_t metric;
+    long lastUpdated; // ms timestamp from Layer1Class::getTime()
 };
 
 class LL2Class {
@@ -137,6 +137,7 @@ private:
     int selectRoute(uint8_t destination[ADDR_LENGTH]);
     int parseNeighbor(Packet packet);
     int parseRoutingTable(Packet packet, int n_entry);
+    void expireRoutes();
 
     // Main entry point functions
     void parseForRoutes(Packet packet);

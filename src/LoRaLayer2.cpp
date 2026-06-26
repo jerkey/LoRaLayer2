@@ -441,15 +441,28 @@ int LL2Class::updateNeighborTable(NeighborTableEntry neighbor, int entry){
 }
 
 int LL2Class::updateRouteTable(RoutingTableEntry route, int entry){
-    // copy route into specified entry in routing table
+    route.lastUpdated = Layer1Class::getTime();
     memcpy(&_routeTable[entry], &route, sizeof(RoutingTableEntry));
     if(entry == _routeEntry){
-        // if specified entry is the same as current count of routes
-        // this is a new route, increment route count
         _routeEntry++;
     }
-    //else route is just updated
     return entry;
+}
+
+void LL2Class::expireRoutes(){
+    if(_routingInterval <= 0) return;
+    long expiry = 3 * _routingInterval;
+    long now = Layer1Class::getTime();
+    for(int i = 0; i < _routeEntry; ){
+        if(now - _routeTable[i].lastUpdated > expiry){
+            // swap with last entry and shrink table
+            _routeTable[i] = _routeTable[_routeEntry - 1];
+            memset(&_routeTable[_routeEntry - 1], 0, sizeof(RoutingTableEntry));
+            _routeEntry--;
+        } else {
+            i++;
+        }
+    }
 }
 
 int LL2Class::selectRoute(uint8_t destination[ADDR_LENGTH]){
@@ -671,6 +684,9 @@ int LL2Class::init(){
 */
 int LL2Class::daemon(){
     int ret = -1;
+    // expire stale routes before broadcasting routing table
+    expireRoutes();
+
     // try adding a routing packet to L2toL1 buffer, if interval is up and routing is enabled
     if (Layer1Class::getTime() - _lastRoutingTime > _routingInterval && _routingInterval > 0) {
         Packet routingPacket = buildRoutingPacket();
