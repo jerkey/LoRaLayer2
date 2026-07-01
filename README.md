@@ -1,6 +1,11 @@
-Layer 2 routing protocol for LoRa connected devices 
+Layer 2 routing protocol for LoRa connected devices
 
-This library is a general purpose, minimal routing protocol. It is intended for use with https://github.com/sudomesh/disaster-radio and was designed using https://github.com/sudomesh/disaster-radio-simulator.
+This is a fork of [sudomesh/LoRaLayer2](https://github.com/sudomesh/LoRaLayer2) with the following fixes:
+
+- **Route expiry**: stale routing table entries are now removed after 3× the routing interval (default 45s). Previously routes accumulated forever, causing nodes that left the mesh to appear as reachable indefinitely.
+- **Routing table corruption fixes**: removed a class of bugs where routes with `distance=255` (unknown destination placeholders) were stored and broadcast. When neighbors relayed them with `distance+1`, uint8_t wrapped to 0, making garbage look like the best available route. Also added `MAX_HOPS=20` guards in `parseRoutingTable` and `buildRoutingPacket` to prevent overflow and stop propagation of unreachable routes.
+
+This library is a general purpose, minimal routing protocol. It is intended for use with https://github.com/jerkey/disaster-radio and was designed using https://github.com/sudomesh/disaster-radio-simulator.
 
 For documentation on the technical details of the LoRaLayer2 protocol, visit the disaster-radio wiki [Protocol page](https://github.com/sudomesh/disaster-radio/wiki/Protocol).
 
