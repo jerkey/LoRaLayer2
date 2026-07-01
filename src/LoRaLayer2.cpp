@@ -306,6 +306,7 @@ Packet LL2Class::buildRoutingPacket(){
         routesPerPacket = MAX_ROUTES_PER_PACKET-1;
     }
     for( int i = 0 ; i < routesPerPacket ; i++){
+        if(_routeTable[i].distance >= MAX_HOPS) continue; // don't broadcast unreachable/garbage routes
         for( int j = 0 ; j < ADDR_LENGTH ; j++){
             data[dataLength] = _routeTable[i].destination[j];
             dataLength++;
@@ -507,11 +508,13 @@ int LL2Class::parseRoutingTable(Packet packet, int n_entry){
     uint8_t data[packet.totalLength - HEADER_LENGTH];
     memcpy(data, &packet.datagram, sizeof(data));
     for( int i = 0 ; i < numberOfRoutes ; i++){
+        uint8_t rawDistance = data[(ADDR_LENGTH+2)*i + ADDR_LENGTH];
+        // skip routes that are already at or beyond the hop limit (avoid uint8_t overflow on ++)
+        if(rawDistance >= MAX_HOPS - 1) continue;
         RoutingTableEntry route;
         memcpy(route.destination, data + (ADDR_LENGTH+2)*i, ADDR_LENGTH);
         memcpy(route.nextHop, packet.source, ADDR_LENGTH);
-        route.distance = data[(ADDR_LENGTH+2)*i + ADDR_LENGTH];
-        route.distance++; // add a hop to distance
+        route.distance = rawDistance + 1; // add a hop to distance
         float metric = (float) data[(ADDR_LENGTH+2)*i + ADDR_LENGTH+1];
         float hopRatio = 1/((float)route.distance);
         // average neighbor metric with rest of route metric
@@ -560,36 +563,24 @@ void LL2Class::parseForRoutes(Packet packet){
     // Parse for source address route
     if(memcmp(packet.sender, packet.source, ADDR_LENGTH) != 0){
       // source is different from sender
-      RoutingTableEntry src_route;
-      memcpy(src_route.destination, packet.source, ADDR_LENGTH);
-      memcpy(src_route.nextHop, packet.sender, ADDR_LENGTH);
-      src_route.distance = packet.hopCount+1;
-      // average neighbor metric with rest of route metric
-      float hopRatio = 1/((float)src_route.distance);
-      float metric = ((float) _neighborTable[n_entry].metric)*(hopRatio) + ((float)packet.metric)*(1-hopRatio);
-      src_route.metric = (uint8_t) metric;
-      r_entry = checkRoutingTable(src_route);
-      if(r_entry >= 0){
-          updateRouteTable(src_route, r_entry);
+      uint8_t srcDistance = packet.hopCount + 1;
+      if(srcDistance < MAX_HOPS){
+        RoutingTableEntry src_route;
+        memcpy(src_route.destination, packet.source, ADDR_LENGTH);
+        memcpy(src_route.nextHop, packet.sender, ADDR_LENGTH);
+        src_route.distance = srcDistance;
+        float hopRatio = 1/((float)src_route.distance);
+        float metric = ((float) _neighborTable[n_entry].metric)*(hopRatio) + ((float)packet.metric)*(1-hopRatio);
+        src_route.metric = (uint8_t) metric;
+        r_entry = checkRoutingTable(src_route);
+        if(r_entry >= 0){
+            updateRouteTable(src_route, r_entry);
+        }
       }
     }
-
-    // Parse for destination address route
-    if(memcmp(packet.datagram.destination, _localAddress, ADDR_LENGTH) != 0 && 
-      memcmp(packet.datagram.destination, packet.receiver, ADDR_LENGTH) != 0 &&
-      memcmp(packet.datagram.destination, BROADCAST, ADDR_LENGTH) != 0){
-      //datagram destination is not my address, the receiver address, or the broadcast address
-      RoutingTableEntry dst_route;
-      memcpy(dst_route.destination, packet.datagram.destination, ADDR_LENGTH);
-      memcpy(dst_route.nextHop, packet.sender, ADDR_LENGTH);
-      // distance and metric are unknown until you receive packet from this destination
-      dst_route.distance = 255; 
-      dst_route.metric = 0;
-      r_entry = checkRoutingTable(dst_route);
-      if(r_entry >= 0){
-          updateRouteTable(dst_route, r_entry);
-      }
-    }
+    // Note: we intentionally do not add a route for packet.datagram.destination here.
+    // Storing a route with distance=255 (unknown) causes uint8_t overflow corruption
+    // when neighbors relay it (+1 wraps to 0, making it look like the best route).
     return;
 }
 
